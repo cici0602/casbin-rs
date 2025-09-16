@@ -15,6 +15,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         
+      - name: Setup Node.js for action analysis
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies for action analysis
+        run: |
+          npm install @actions/core @actions/github @actions/exec
+          
       - name: Check for deprecated actions/cache versions
         run: |
           echo "=== Checking for deprecated actions/cache versions ==="
@@ -84,3 +93,170 @@ jobs:
           done
           
           echo "=== Composite action check complete ==="
+          
+      - name: Analyze third-party actions for deprecated cache usage
+        id: analyze-actions
+        run: |
+          echo "=== Analyzing third-party actions for deprecated cache usage ==="
+          
+          # Create a script to analyze action dependencies
+          cat > analyze-action-deps.js << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const https = require('https');
+          const { execSync } = require('child_process');
+          
+          // Function to download and parse action.yml from a repository
+          async function getActionYml(owner, repo, ref, actionPath = '') {
+            return new Promise((resolve, reject) => {
+              const url = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${actionPath}action.yml`;
+              let data = '';
+              
+              https.get(url, (res) => {
+                if (res.statusCode === 200) {
+                  res.on('data', (chunk) => { data += chunk; });
+                  res.on('end', () => resolve(data));
+                } else if (res.statusCode === 404) {
+                  // Try action.yaml if action.yml doesn't exist
+                  const urlYaml = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${actionPath}action.yaml`;
+                  let dataYaml = '';
+                  
+                  https.get(urlYaml, (resYaml) => {
+                    if (resYaml.statusCode === 200) {
+                      resYaml.on('data', (chunk) => { dataYaml += chunk; });
+                      resYaml.on('end', () => resolve(dataYaml));
+                    } else {
+                      resolve(null); // No action.yml or action.yaml found
+                    }
+                  }).on('error', reject);
+                } else {
+                  resolve(null); // Other error, assume no action.yml
+                }
+              }).on('error', reject);
+            });
+          }
+          
+          // Function to parse action.yml and find uses of actions/cache
+          function parseActionForCacheUsage(actionYml, actionIdentifier) {
+            if (!actionYml) return [];
+            
+            const results = [];
+            const lines = actionYml.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line.includes('uses: actions/cache@')) {
+                const match = line.match(/uses: actions\/cache@(v[0-9]+\.[0-9]+\.[0-9]+)/);
+                if (match) {
+                  const version = match[1];
+                  if (version.startsWith('v1') || version.startsWith('v2') || version.startsWith('v3')) {
+                    results.push({
+                      action: actionIdentifier,
+                      line: i + 1,
+                      content: line.trim(),
+                      version: version,
+                      deprecated: true
+                    });
+                  }
+                }
+              }
+            }
+            
+            return results;
+          }
+          
+          // Main function to analyze all workflow files
+          async function main() {
+            const workflowDir = '.github/workflows';
+            const files = fs.readdirSync(workflowDir);
+            const thirdPartyActions = new Set();
+            const deprecatedUsages = [];
+            
+            // First pass: collect all third-party actions used in workflows
+            for (const file of files) {
+              if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue;
+              if (file === 'check-deprecated-actions.yml') continue;
+              
+              const filePath = path.join(workflowDir, file);
+              const content = fs.readFileSync(filePath, 'utf8');
+              const lines = content.split('\n');
+              
+              for (const line of lines) {
+                // Match pattern: uses: owner/repo/action@ref
+                const match = line.match(/uses:\s*([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)?@[a-zA-Z0-9_.-]+)/);
+                if (match) {
+                  const actionRef = match[1];
+                  const [ownerRepo, ref] = actionRef.split('@');
+                  const [owner, repo, ...actionPathParts] = ownerRepo.split('/');
+                  const actionPath = actionPathParts.length > 0 ? actionPathParts.join('/') + '/' : '';
+                  
+                  // Skip GitHub's own actions
+                  if (owner === 'actions') continue;
+                  
+                  thirdPartyActions.add({
+                    owner,
+                    repo,
+                    ref,
+                    actionPath,
+                    fullRef: actionRef,
+                    sourceFile: file
+                  });
+                }
+              }
+            }
+            
+            console.log(`Found ${thirdPartyActions.size} third-party actions to analyze:`);
+            for (const action of thirdPartyActions) {
+              console.log(`  - ${action.fullRef} (used in ${action.sourceFile})`);
+            }
+            
+            // Second pass: analyze each third-party action for deprecated cache usage
+            for (const action of thirdPartyActions) {
+              console.log(`\nAnalyzing ${action.fullRef}...`);
+              try {
+                const actionYml = await getActionYml(action.owner, action.repo, action.ref, action.actionPath);
+                if (actionYml) {
+                  const results = parseActionForCacheUsage(actionYml, action.fullRef);
+                  if (results.length > 0) {
+                    console.log(`❌ Found deprecated cache usage in ${action.fullRef}:`);
+                    for (const result of results) {
+                      console.log(`  Line ${result.line}: ${result.content}`);
+                      deprecatedUsages.push({
+                        ...result,
+                        sourceFile: action.sourceFile
+                      });
+                    }
+                  } else {
+                    console.log(`✅ No deprecated cache usage found in ${action.fullRef}`);
+                  }
+                } else {
+                  console.log(`⚠️ Could not find action.yml for ${action.fullRef}`);
+                }
+              } catch (error) {
+                console.log(`❌ Error analyzing ${action.fullRef}: ${error.message}`);
+              }
+            }
+            
+            // Output summary
+            console.log('\n=== SUMMARY ===');
+            if (deprecatedUsages.length > 0) {
+              console.log(`❌ Found ${deprecatedUsages.length} deprecated cache usage(s):`);
+              for (const usage of deprecatedUsages) {
+                console.log(`  - Action "${usage.action}" (used in ${usage.sourceFile}) uses deprecated cache version "${usage.version}" at line ${usage.line}: ${usage.content}`);
+              }
+              process.exit(1);
+            } else {
+              console.log('✅ No deprecated cache usage found in third-party actions');
+            }
+          }
+          
+          main().catch(error => {
+            console.error('Error:', error);
+            process.exit(1);
+          });
+          EOF
+          
+          # Run the analysis script
+          node analyze-action-deps.js
+          
+          echo "=== Third-party action analysis complete ==="
