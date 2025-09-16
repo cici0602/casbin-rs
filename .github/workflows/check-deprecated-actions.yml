@@ -23,9 +23,14 @@ jobs:
           echo "Checking workflow files..."
           find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
             echo "Checking file: $file"
-            if grep -q "actions/cache@v2\|actions/cache@v3" "$file"; then
+            # Skip the current check file to avoid self-matching
+            if [[ "$file" == ".github/workflows/check-deprecated-actions.yml" ]]; then
+              echo "Skipping self-check for $file"
+              continue
+            fi
+            if grep -q "uses:.*actions/cache@v[23]" "$file"; then
               echo "❌ ERROR: Found deprecated actions/cache version in $file"
-              grep -n "actions/cache@v2\|actions/cache@v3" "$file"
+              grep -n "uses:.*actions/cache@v[23]" "$file"
               exit 1
             else
               echo "✅ No deprecated actions/cache versions found in $file"
@@ -36,15 +41,19 @@ jobs:
           
           # Check for other common deprecated actions
           deprecated_actions=(
-            "actions/setup-node@v1\|actions/setup-node@v2\|actions/setup-node@v3"
-            "actions/setup-python@v1\|actions/setup-python@v2\|actions/setup-python@v3"
-            "actions/setup-go@v1\|actions/setup-go@v2\|actions/setup-go@v3"
-            "actions/checkout@v1\|actions/checkout@v2\|actions/checkout@v3"
+            "uses:.*actions/setup-node@v[1-3]"
+            "uses:.*actions/setup-python@v[1-3]"
+            "uses:.*actions/setup-go@v[1-3]"
+            "uses:.*actions/checkout@v[1-3]"
           )
           
           for action_pattern in "${deprecated_actions[@]}"; do
             echo "Checking for pattern: $action_pattern"
             find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
+              # Skip the current check file to avoid self-matching
+              if [[ "$file" == ".github/workflows/check-deprecated-actions.yml" ]]; then
+                continue
+              fi
               if grep -q "$action_pattern" "$file"; then
                 echo "⚠️ WARNING: Found potentially deprecated action in $file"
                 grep -n "$action_pattern" "$file"
@@ -62,6 +71,10 @@ jobs:
           # For now, we'll just list any composite actions being used
           echo "Checking for composite actions..."
           find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
+            # Skip the current check file to avoid self-matching
+            if [[ "$file" == ".github/workflows/check-deprecated-actions.yml" ]]; then
+              continue
+            fi
             echo "Checking file: $file"
             # Look for uses of local composite actions
             if grep -q "uses: \./" "$file"; then
