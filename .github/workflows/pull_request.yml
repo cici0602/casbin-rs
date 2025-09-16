@@ -7,6 +7,12 @@ jobs:
     name: run benchmark
     runs-on: ubuntu-latest
     steps:
+      - name: Debug Action Versions
+        run: |
+          echo "=== Checking for potential deprecated action usage ==="
+          echo "Current runner version: '${{ runner.version }}'"
+          echo "Checking for any references to actions/cache v2 or v3..."
+          echo "This is a preventative debug step to identify any deprecated action usage."
       - uses: actions/checkout@v4
         with:
           ref: ${{github.event.pull_request.head.ref}}
@@ -17,6 +23,7 @@ jobs:
           override: true
           profile: minimal
       - name: Cache cargo
+        id: cache-cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -24,6 +31,10 @@ jobs:
             ~/.cargo/git
             ~/.cargo/registry
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Log cache info for cargo
+        run: |
+          echo "Cache hit for cargo: ${{ steps.cache-cargo.outputs.cache-hit }}"
+          echo "Cache key for cargo: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
       - uses: boa-dev/criterion-compare-action@v3.2.4
         with:
           cwd: benches

@@ -1,0 +1,73 @@
+name: Check Deprecated Actions
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  check-deprecated-actions:
+    name: Check for Deprecated Actions
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Check for deprecated actions/cache versions
+        run: |
+          echo "=== Checking for deprecated actions/cache versions ==="
+          
+          # Check all workflow files for references to actions/cache v2 or v3
+          echo "Checking workflow files..."
+          find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
+            echo "Checking file: $file"
+            if grep -q "actions/cache@v2\|actions/cache@v3" "$file"; then
+              echo "❌ ERROR: Found deprecated actions/cache version in $file"
+              grep -n "actions/cache@v2\|actions/cache@v3" "$file"
+              exit 1
+            else
+              echo "✅ No deprecated actions/cache versions found in $file"
+            fi
+          done
+          
+          echo "=== Checking for other potentially deprecated actions ==="
+          
+          # Check for other common deprecated actions
+          deprecated_actions=(
+            "actions/setup-node@v1\|actions/setup-node@v2\|actions/setup-node@v3"
+            "actions/setup-python@v1\|actions/setup-python@v2\|actions/setup-python@v3"
+            "actions/setup-go@v1\|actions/setup-go@v2\|actions/setup-go@v3"
+            "actions/checkout@v1\|actions/checkout@v2\|actions/checkout@v3"
+          )
+          
+          for action_pattern in "${deprecated_actions[@]}"; do
+            echo "Checking for pattern: $action_pattern"
+            find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
+              if grep -q "$action_pattern" "$file"; then
+                echo "⚠️ WARNING: Found potentially deprecated action in $file"
+                grep -n "$action_pattern" "$file"
+              fi
+            done
+          done
+          
+          echo "=== Action version check complete ==="
+          
+      - name: Check for composite actions that might use deprecated actions
+        run: |
+          echo "=== Checking for composite actions that might use deprecated actions ==="
+          
+          # This is a more advanced check that would require parsing composite actions
+          # For now, we'll just list any composite actions being used
+          echo "Checking for composite actions..."
+          find .github/workflows -name "*.yml" -o -name "*.yaml" | while read -r file; do
+            echo "Checking file: $file"
+            # Look for uses of local composite actions
+            if grep -q "uses: \./" "$file"; then
+              echo "Found local composite action usage in $file:"
+              grep -n "uses: \./" "$file"
+            fi
+          done
+          
+          echo "=== Composite action check complete ==="

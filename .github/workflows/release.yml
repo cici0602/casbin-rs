@@ -8,6 +8,8 @@ on:
 jobs:
   release:
     if: ${{ github.repository == 'casbin/casbin-rs' &&  github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'}}
-    uses: casbin-rs/semantic-release-action-rust/.github/workflows/release-library.yml@v5
+    uses: casbin-rs/semantic-release-action-rust/.github/workflows/release-library.yml@master
     secrets:
       cargo-registry-token: ${{ secrets.CARGO_TOKEN }}
+    with:
+      debug-logs: true
