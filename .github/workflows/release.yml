@@ -11,3 +11,5 @@ jobs:
     uses: casbin-rs/semantic-release-action-rust/.github/workflows/release-library.yml@master
     secrets:
       cargo-registry-token: ${{ secrets.CARGO_TOKEN }}
+    with:
+      debug-logs: true

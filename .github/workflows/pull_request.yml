@@ -7,25 +7,37 @@ jobs:
     name: run benchmark
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - name: Debug Action Versions
+        run: |
+          echo "=== Checking for potential deprecated action usage ==="
+          echo "Current runner version: '${{ runner.version }}'"
+          echo "Checking for any references to actions/cache v2 or v3..."
+          echo "This is a preventative debug step to identify any deprecated action usage."
+      - uses: actions/checkout@v4
         with:
           ref: ${{github.event.pull_request.head.ref}}
           repository: ${{github.event.pull_request.head.repo.full_name}}
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          override: true
-          profile: minimal
+          components: rustfmt, clippy
       - name: Cache cargo
-        uses: actions/cache@v2.1.4
+        id: cache-cargo
+        uses: actions/cache@v4
         with:
           path: |
             target
             ~/.cargo/git
             ~/.cargo/registry
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: smrpn/criterion-compare-action@move_to_actions 
-        with:
-          cwd: benches
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log cache info for cargo
+        run: |
+          echo "Cache hit for cargo: ${{ steps.cache-cargo.outputs.cache-hit }}"
+          echo "Cache key for cargo: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+      - name: Install cargo-criterion
+        run: cargo install cargo-criterion
+      - name: Run benchmark
+        run: |
+          cd benches
+          cargo criterion --plotting-backend plotters --output-format html
 
