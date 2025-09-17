@@ -20,15 +20,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
+            target
+            ~/.cargo/git
+            ~/.cargo/registry
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      - uses: smrpn/criterion-compare-action@master 
+      - uses: smrpn/criterion-compare-action@move_to_actions 
         with:
           cwd: benches
           token: ${{ secrets.GITHUB_TOKEN }}
