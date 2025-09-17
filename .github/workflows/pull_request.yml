@@ -23,7 +23,7 @@ jobs:
             target
             ~/.cargo/git
             ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-v4-${{ hashFiles('**/Cargo.lock') }}
       - uses: smrpn/criterion-compare-action@move_to_actions 
         with:
           cwd: benches
