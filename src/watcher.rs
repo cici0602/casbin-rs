@@ -66,7 +66,7 @@ mod tests {
         watcher.update(event_data);
 
         let data = watcher.get_received_data();
-        assert_eq!(data.len(), 2); 
+        assert_eq!(data.len(), 2);
         assert!(data[0].contains("callback: Type: AddPolicy"));
         assert!(data[1].contains("Type: AddPolicy"));
     }
